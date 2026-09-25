@@ -1,23 +1,28 @@
 import { useMemo } from 'react';
-import { Template } from '../types/template';
+import { TemplateVariable } from '../types/template';
 import { VariableValues } from '../types/contract-instance';
+
+export interface TemplateContentSource {
+  contentHtml: string;
+  variables: TemplateVariable[];
+}
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function replaceVariables(template: Template | undefined, values: VariableValues) {
-  if (!template) {
+export function replaceVariables(source: TemplateContentSource | undefined, values: VariableValues) {
+  if (!source) {
     return '';
   }
 
-  return template.variables.reduce((html, variable) => {
+  return source.variables.reduce((html, variable) => {
     const actualValue = values[variable.name] || variable.defaultValue || `{{${variable.name}}}`;
     const pattern = new RegExp(`{{\\s*${escapeRegExp(variable.name)}\\s*}}`, 'g');
     return html.replace(pattern, actualValue);
-  }, template.contentHtml);
+  }, source.contentHtml);
 }
 
-export function useVariableReplace(template: Template | undefined, values: VariableValues) {
-  return useMemo(() => replaceVariables(template, values), [template, values]);
+export function useVariableReplace(source: TemplateContentSource | undefined, values: VariableValues) {
+  return useMemo(() => replaceVariables(source, values), [source, values]);
 }

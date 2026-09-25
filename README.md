@@ -5,8 +5,10 @@
 ## 功能列表
 
 - 模板库：按合同分类、标签和关键词检索，支持创建、编辑、复制、删除模板。
+- 模板版本：每次保存正文或变量都会形成独立的不可变版本；仅改标题等元数据不生成新版本。
 - 模板编辑器：使用 TipTap 富文本编辑合同正文，右侧维护变量，底部条款库可插入复用条款。
-- 合同实例：基于模板创建实例，填写变量后实时预览最终合同 HTML。
+- 合同实例：基于模板创建实例时锁定当时的正文、变量定义和模板版本号，之后模板更新不会影响历史实例。
+- 套用最新模板：实例页可一键套用模板最新版本；新版删除必填变量、已有填写丢失或类型不匹配、新增必填变量无值无默认时阻止切换并列出具体变量；套用前自动保存原内容快照，历史版本记录完整保留。
 - 版本历史：为合同实例保存版本，左右双栏高亮对比内容差异。
 - 条款库：按分类管理违约、争议解决、付款、知识产权等常用条款。
 - 本地持久化：通过 IndexedDB 保存全部数据，并支持 JSON 导入导出。
@@ -47,7 +49,7 @@ npm run preview
 ```text
 frontend/src/
 ├── api/           # IndexedDB 数据访问入口
-├── stores/        # template.ts, clause.ts, instance.ts, version.ts
+├── stores/        # template.ts, template-version.ts, clause.ts, instance.ts, version.ts
 ├── types/         # Template / Clause / ContractInstance / Version / enums
 ├── components/
 │   ├── common/    # TemplateCard, RichEditor, VariableForm, CategoryFilter, VersionDiff

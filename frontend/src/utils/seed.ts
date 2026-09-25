@@ -79,6 +79,7 @@ export const seedVersions: Version[] = [];
 
 export const seedData = {
   templates: seedTemplates,
+  templateVersions: [],
   clauses: seedClauses,
   instances: seedInstances,
   versions: seedVersions

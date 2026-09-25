@@ -94,8 +94,8 @@ export function TemplateEditor() {
   };
 
   const saveTemplate = async () => {
-    await updateTemplate(draft);
-    Message.success('模板已保存');
+    const version = await updateTemplate(draft);
+    Message.success(`模板已保存，当前版本 V${version.versionNo}，历史实例内容不受影响`);
   };
 
   return (

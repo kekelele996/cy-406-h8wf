@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { templateDb } from '../api/db';
 import { Template, TemplateDraft } from '../types/template';
+import { TemplateVersion } from '../types/template-version';
 import { TemplateCategory } from '../types/enums';
 import { makeId, nowIso, putRecord } from '../utils/db';
 import { seedTemplates } from '../utils/seed';
+import { useTemplateVersionStore } from './template-version';
 
 interface TemplateHistory {
   past: Template[];
@@ -16,7 +18,7 @@ interface TemplateState {
   history: TemplateHistory;
   loadTemplates: () => Promise<void>;
   createTemplate: (draft?: Partial<TemplateDraft>) => Promise<Template>;
-  updateTemplate: (template: Template, trackHistory?: boolean) => Promise<void>;
+  updateTemplate: (template: Template, trackHistory?: boolean) => Promise<TemplateVersion>;
   deleteTemplate: (id: string) => Promise<void>;
   duplicateTemplate: (id: string) => Promise<Template | undefined>;
   undoTemplateChange: () => Promise<void>;
@@ -53,6 +55,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
         await Promise.all(seedTemplates.map((template) => putRecord('templates', template)));
         templates = seedTemplates;
       }
+      await useTemplateVersionStore.getState().ensureVersionsForTemplates(templates);
       set({ templates: sortTemplates(templates) });
     } finally {
       set({ loading: false });
@@ -70,6 +73,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
     };
 
     await templateDb.save(template);
+    await useTemplateVersionStore.getState().syncVersion(template, '初始版本');
     set((state) => ({ templates: upsertTemplate(state.templates, template) }));
     return template;
   },
@@ -79,6 +83,8 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
     const next = { ...template, updatedAt: nowIso() };
 
     await templateDb.save(next);
+    // 正文或变量有变化时生成新的独立模板版本，历史实例仍锁定在旧版本上。
+    const version = await useTemplateVersionStore.getState().syncVersion(next);
     set((state) => ({
       templates: upsertTemplate(state.templates, next),
       history:
@@ -89,6 +95,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
             }
           : state.history
     }));
+    return version;
   },
 
   async deleteTemplate(id) {
@@ -120,6 +127,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
 
     const current = templates.find((template) => template.id === previous.id);
     await templateDb.save(previous);
+    await useTemplateVersionStore.getState().syncVersion(previous, '撤销后保存');
     set({
       templates: upsertTemplate(templates, previous),
       history: {
@@ -138,6 +146,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
 
     const current = templates.find((template) => template.id === next.id);
     await templateDb.save(next);
+    await useTemplateVersionStore.getState().syncVersion(next, '重做后保存');
     set({
       templates: upsertTemplate(templates, next),
       history: {

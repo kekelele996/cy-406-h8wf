@@ -28,6 +28,7 @@ export function createStoreApi<S extends StoreName>(storeName: S) {
 }
 
 export const templateDb = createStoreApi('templates');
+export const templateVersionDb = createStoreApi('templateVersions');
 export const clauseDb = createStoreApi('clauses');
 export const instanceDb = createStoreApi('instances');
 export const versionDb = createStoreApi('versions');

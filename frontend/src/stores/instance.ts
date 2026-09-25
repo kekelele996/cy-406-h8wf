@@ -2,16 +2,21 @@ import { create } from 'zustand';
 import { instanceDb } from '../api/db';
 import { ContractInstance, VariableValues } from '../types/contract-instance';
 import { ContractStatus } from '../types/enums';
-import { Template } from '../types/template';
-import { makeId, nowIso, putRecord } from '../utils/db';
+import { Template, TemplateVariable } from '../types/template';
+import { TemplateVersion } from '../types/template-version';
+import { getAllRecords, makeId, nowIso, putRecord } from '../utils/db';
 import { seedInstances } from '../utils/seed';
 import { replaceVariables } from '../hooks/useVariableReplace';
+import { buildAppliedVariableValues } from '../utils/template-apply';
+import { useTemplateVersionStore } from './template-version';
+import { useVersionStore } from './version';
 
 interface InstanceState {
   instances: ContractInstance[];
   loading: boolean;
   loadInstances: () => Promise<void>;
   createFromTemplate: (template: Template) => Promise<ContractInstance>;
+  applyTemplateVersion: (instance: ContractInstance, version: TemplateVersion) => Promise<ContractInstance>;
   updateInstance: (instance: ContractInstance) => Promise<void>;
   deleteInstance: (id: string) => Promise<void>;
   setInstanceStatus: (id: string, status: ContractStatus) => Promise<void>;
@@ -26,11 +31,21 @@ function upsertInstance(list: ContractInstance[], instance: ContractInstance) {
   return sortInstances(exists ? list.map((item) => (item.id === instance.id ? instance : item)) : [instance, ...list]);
 }
 
-function valuesFromTemplate(template: Template): VariableValues {
-  return template.variables.reduce<VariableValues>((acc, variable) => {
+function valuesFromVariables(variables: TemplateVariable[]): VariableValues {
+  return variables.reduce<VariableValues>((acc, variable) => {
     acc[variable.name] = variable.defaultValue;
     return acc;
   }, {});
+}
+
+function lockToVersion(instance: ContractInstance, version: TemplateVersion): ContractInstance {
+  return {
+    ...instance,
+    templateVersionId: version.id,
+    templateVersionNo: version.versionNo,
+    lockedContentHtml: version.contentHtml,
+    lockedVariables: version.variables.map((variable) => ({ ...variable }))
+  };
 }
 
 export const useInstanceStore = create<InstanceState>((set, get) => ({
@@ -45,7 +60,26 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
         await Promise.all(seedInstances.map((instance) => putRecord('instances', instance)));
         instances = seedInstances;
       }
-      set({ instances: sortInstances(instances) });
+
+      // 兼容旧数据：未锁定版本的实例按模板当前内容补建锁定快照。
+      const templates = await getAllRecords('templates');
+      const migrated: ContractInstance[] = [];
+      for (const instance of instances) {
+        if (instance.templateVersionId && Array.isArray(instance.lockedVariables)) {
+          migrated.push(instance);
+          continue;
+        }
+        const template = templates.find((item) => item.id === instance.templateId);
+        if (!template) {
+          migrated.push(instance);
+          continue;
+        }
+        const version = await useTemplateVersionStore.getState().syncVersion(template, '初始版本');
+        const locked = lockToVersion(instance, version);
+        await instanceDb.save(locked);
+        migrated.push(locked);
+      }
+      set({ instances: sortInstances(migrated) });
     } finally {
       set({ loading: false });
     }
@@ -53,22 +87,46 @@ export const useInstanceStore = create<InstanceState>((set, get) => ({
 
   async createFromTemplate(template) {
     const timestamp = nowIso();
-    const variableValues = valuesFromTemplate(template);
-    const instance: ContractInstance = {
-      id: makeId('inst'),
-      templateId: template.id,
-      title: `${template.title} - 合同实例`,
-      variableValues,
-      finalHtml: replaceVariables(template, variableValues),
-      status: ContractStatus.Draft,
-      versionIds: [],
-      createdAt: timestamp,
-      updatedAt: timestamp
-    };
+    // 创建实例时锁定当时的模板版本、正文和变量，之后模板改动不影响本实例。
+    const version = await useTemplateVersionStore.getState().syncVersion(template, '初始版本');
+    const variableValues = valuesFromVariables(version.variables);
+    const instance: ContractInstance = lockToVersion(
+      {
+        id: makeId('inst'),
+        templateId: template.id,
+        templateVersionId: '',
+        templateVersionNo: 0,
+        title: `${template.title} - 合同实例`,
+        lockedContentHtml: '',
+        lockedVariables: [],
+        variableValues,
+        finalHtml: replaceVariables(version, variableValues),
+        status: ContractStatus.Draft,
+        versionIds: [],
+        createdAt: timestamp,
+        updatedAt: timestamp
+      },
+      version
+    );
 
     await instanceDb.save(instance);
     set((state) => ({ instances: upsertInstance(state.instances, instance) }));
     return instance;
+  },
+
+  // 套用新版模板：先把当前内容存为版本快照，再替换锁定的正文与变量。
+  async applyTemplateVersion(instance, version) {
+    const snapshot = await useVersionStore.getState().saveVersion(instance, `套用模板 V${version.versionNo} 前自动快照`);
+    const variableValues = buildAppliedVariableValues(instance, version);
+    const next: ContractInstance = {
+      ...lockToVersion(instance, version),
+      variableValues,
+      finalHtml: replaceVariables(version, variableValues),
+      versionIds: Array.from(new Set([...instance.versionIds, snapshot.id]))
+    };
+
+    await get().updateInstance(next);
+    return next;
   },
 
   async updateInstance(instance) {
