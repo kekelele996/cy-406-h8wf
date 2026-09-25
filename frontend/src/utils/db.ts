@@ -2,16 +2,18 @@ import { openDB, IDBPDatabase } from 'idb';
 import { Clause } from '../types/clause';
 import { ContractInstance } from '../types/contract-instance';
 import { Template } from '../types/template';
+import { TemplateVersion } from '../types/template-version';
 import { Version } from '../types/version';
 
 export const DB_NAME = 'contract-template-editor';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
-export const STORE_NAMES = ['templates', 'clauses', 'instances', 'versions'] as const;
+export const STORE_NAMES = ['templates', 'templateVersions', 'clauses', 'instances', 'versions'] as const;
 export type StoreName = (typeof STORE_NAMES)[number];
 
 export interface StoreValueMap {
   templates: Template;
+  templateVersions: TemplateVersion;
   clauses: Clause;
   instances: ContractInstance;
   versions: Version;
@@ -21,6 +23,7 @@ export type StoreValue<S extends StoreName> = StoreValueMap[S];
 
 export interface ExportPayload {
   templates: Template[];
+  templateVersions: TemplateVersion[];
   clauses: Clause[];
   instances: ContractInstance[];
   versions: Version[];
@@ -80,8 +83,9 @@ export async function clearStore(storeName: StoreName) {
 }
 
 export async function exportAllData(): Promise<ExportPayload> {
-  const [templates, clauses, instances, versions] = await Promise.all([
+  const [templates, templateVersions, clauses, instances, versions] = await Promise.all([
     getAllRecords('templates'),
+    getAllRecords('templateVersions'),
     getAllRecords('clauses'),
     getAllRecords('instances'),
     getAllRecords('versions')
@@ -89,6 +93,7 @@ export async function exportAllData(): Promise<ExportPayload> {
 
   return {
     templates,
+    templateVersions,
     clauses,
     instances,
     versions,

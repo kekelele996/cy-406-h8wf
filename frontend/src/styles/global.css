@@ -124,6 +124,31 @@ body {
   grid-template-columns: minmax(240px, 1.2fr) minmax(160px, 220px) minmax(240px, 1fr);
 }
 
+.instance-version-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.blocker-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  line-height: 1.9;
+}
+
+.apply-extra-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.apply-extra-item {
+  display: grid;
+  gap: 6px;
+}
+
 .template-grid,
 .clause-grid {
   display: grid;

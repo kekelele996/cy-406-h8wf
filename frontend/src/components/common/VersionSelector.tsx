@@ -12,7 +12,9 @@ interface VersionSelectorProps {
 export function VersionSelector({ versions, leftId, rightId, onLeftChange, onRightChange }: VersionSelectorProps) {
   const options = versions.map((version) => ({
     value: version.id,
-    label: `版本 ${version.versionNo} · ${version.remark} · ${new Date(version.createdAt).toLocaleString()}`
+    label: `版本 ${version.versionNo}${version.templateVersionNo ? ` · 模板 v${version.templateVersionNo}` : ''} · ${version.remark} · ${new Date(
+      version.createdAt
+    ).toLocaleString()}`
   }));
 
   return (

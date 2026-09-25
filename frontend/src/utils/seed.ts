@@ -1,43 +1,82 @@
 import { Clause } from '../types/clause';
 import { ContractInstance } from '../types/contract-instance';
-import { ClauseCategory, ContractStatus, TemplateCategory, VariableType } from '../types/enums';
-import { Template } from '../types/template';
+import { ClauseCategory, TemplateCategory, VariableType } from '../types/enums';
+import { Template, TemplateVariable } from '../types/template';
+import { TemplateVersion } from '../types/template-version';
 import { Version } from '../types/version';
 import { makeId, nowIso } from './db';
 
 const createdAt = nowIso();
 
+const laborTemplateId = makeId('tpl');
+const ndaTemplateId = makeId('tpl');
+const laborVersionId = makeId('tplver');
+const ndaVersionId = makeId('tplver');
+
+const laborVariables: TemplateVariable[] = [
+  { id: makeId('var'), name: 'partyA', label: '甲方公司', type: VariableType.Text, defaultValue: '某某科技有限公司', required: true },
+  { id: makeId('var'), name: 'partyB', label: '乙方姓名', type: VariableType.Text, defaultValue: '张三', required: true },
+  { id: makeId('var'), name: 'salary', label: '月薪', type: VariableType.Currency, defaultValue: '15000', required: true },
+  { id: makeId('var'), name: 'startDate', label: '入职日期', type: VariableType.Date, defaultValue: '2026-07-01', required: true }
+];
+
+const ndaVariables: TemplateVariable[] = [
+  { id: makeId('var'), name: 'discloser', label: '披露方', type: VariableType.Text, defaultValue: '甲方', required: true },
+  { id: makeId('var'), name: 'recipient', label: '接收方', type: VariableType.Text, defaultValue: '乙方', required: true },
+  { id: makeId('var'), name: 'termYears', label: '保密期限（年）', type: VariableType.Number, defaultValue: '3', required: true }
+];
+
+const laborContent =
+  '<h2>劳动合同</h2><p>甲方：{{partyA}}</p><p>乙方：{{partyB}}</p><p>乙方自 {{startDate}} 起入职甲方，月工资为人民币 {{salary}} 元。</p><p>双方应遵守劳动法律法规及公司制度。</p>';
+
+const ndaContent =
+  '<h2>保密协议</h2><p>{{discloser}} 向 {{recipient}} 披露的商业信息均属于保密信息。</p><p>接收方应在 {{termYears}} 年内承担保密义务，不得向第三方披露。</p>';
+
 export const seedTemplates: Template[] = [
   {
-    id: makeId('tpl'),
+    id: laborTemplateId,
     title: '劳动合同标准模板',
     category: TemplateCategory.Labor,
     tags: ['入职', '标准版', '试用期'],
     createdAt,
     updatedAt: createdAt,
-    variables: [
-      { id: makeId('var'), name: 'partyA', label: '甲方公司', type: VariableType.Text, defaultValue: '某某科技有限公司', required: true },
-      { id: makeId('var'), name: 'partyB', label: '乙方姓名', type: VariableType.Text, defaultValue: '张三', required: true },
-      { id: makeId('var'), name: 'salary', label: '月薪', type: VariableType.Currency, defaultValue: '15000', required: true },
-      { id: makeId('var'), name: 'startDate', label: '入职日期', type: VariableType.Date, defaultValue: '2026-07-01', required: true }
-    ],
-    contentHtml:
-      '<h2>劳动合同</h2><p>甲方：{{partyA}}</p><p>乙方：{{partyB}}</p><p>乙方自 {{startDate}} 起入职甲方，月工资为人民币 {{salary}} 元。</p><p>双方应遵守劳动法律法规及公司制度。</p>'
+    currentVersionId: laborVersionId,
+    variables: laborVariables,
+    contentHtml: laborContent
   },
   {
-    id: makeId('tpl'),
+    id: ndaTemplateId,
     title: '保密协议模板',
     category: TemplateCategory.Nda,
     tags: ['NDA', '商业秘密', '合作前'],
     createdAt,
     updatedAt: createdAt,
-    variables: [
-      { id: makeId('var'), name: 'discloser', label: '披露方', type: VariableType.Text, defaultValue: '甲方', required: true },
-      { id: makeId('var'), name: 'recipient', label: '接收方', type: VariableType.Text, defaultValue: '乙方', required: true },
-      { id: makeId('var'), name: 'termYears', label: '保密期限（年）', type: VariableType.Number, defaultValue: '3', required: true }
-    ],
-    contentHtml:
-      '<h2>保密协议</h2><p>{{discloser}} 向 {{recipient}} 披露的商业信息均属于保密信息。</p><p>接收方应在 {{termYears}} 年内承担保密义务，不得向第三方披露。</p>'
+    currentVersionId: ndaVersionId,
+    variables: ndaVariables,
+    contentHtml: ndaContent
+  }
+];
+
+export const seedTemplateVersions: TemplateVersion[] = [
+  {
+    id: laborVersionId,
+    templateId: laborTemplateId,
+    versionNo: 1,
+    title: '劳动合同标准模板',
+    contentHtml: laborContent,
+    variables: laborVariables.map((variable) => ({ ...variable })),
+    createdAt,
+    remark: '初始版本'
+  },
+  {
+    id: ndaVersionId,
+    templateId: ndaTemplateId,
+    versionNo: 1,
+    title: '保密协议模板',
+    contentHtml: ndaContent,
+    variables: ndaVariables.map((variable) => ({ ...variable })),
+    createdAt,
+    remark: '初始版本'
   }
 ];
 
@@ -79,6 +118,7 @@ export const seedVersions: Version[] = [];
 
 export const seedData = {
   templates: seedTemplates,
+  templateVersions: seedTemplateVersions,
   clauses: seedClauses,
   instances: seedInstances,
   versions: seedVersions

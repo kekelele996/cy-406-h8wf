@@ -8,6 +8,7 @@ import { VariablePanel } from '../components/editor/VariablePanel';
 import { useHistory } from '../hooks/useHistory';
 import { useClauseStore } from '../stores/clause';
 import { useTemplateStore } from '../stores/template';
+import { useTemplateVersionStore } from '../stores/templateVersion';
 import { TemplateCategory, TEMPLATE_CATEGORY_LABELS } from '../types/enums';
 import { Template } from '../types/template';
 
@@ -24,10 +25,11 @@ export function TemplateEditor() {
   const contentHistory = useHistory('');
   const { templates, loadTemplates, createTemplate, updateTemplate } = useTemplateStore();
   const { clauses, loadClauses, incrementUsage } = useClauseStore();
+  const { versions: templateVersions, loadVersions: loadTemplateVersions } = useTemplateVersionStore();
 
   useEffect(() => {
-    void Promise.all([loadTemplates(), loadClauses()]);
-  }, [loadClauses, loadTemplates]);
+    void Promise.all([loadTemplates(), loadClauses(), loadTemplateVersions()]);
+  }, [loadClauses, loadTemplates, loadTemplateVersions]);
 
   useEffect(() => {
     if (!id) {
@@ -74,6 +76,10 @@ export function TemplateEditor() {
   }, [contentHistory]);
 
   const tagText = useMemo(() => draft?.tags.join('，') ?? '', [draft?.tags]);
+  const currentVersionNo = useMemo(
+    () => templateVersions.find((version) => version.id === draft?.currentVersionId)?.versionNo,
+    [draft?.currentVersionId, templateVersions]
+  );
 
   if (!draft) {
     return <div className="empty-state">正在加载模板...</div>;
@@ -94,8 +100,9 @@ export function TemplateEditor() {
   };
 
   const saveTemplate = async () => {
-    await updateTemplate(draft);
-    Message.success('模板已保存');
+    const { template: saved, version } = await updateTemplate(draft);
+    setDraft(saved);
+    Message.success(version ? `模板已保存，生成新版本 v${version.versionNo}` : '模板已保存，正文未变化');
   };
 
   return (
@@ -103,7 +110,10 @@ export function TemplateEditor() {
       <div className="page-heading">
         <div>
           <Typography.Title heading={3}>模板编辑器</Typography.Title>
-          <Typography.Text type="secondary">正文、变量和可复用条款在同一工作台中维护。</Typography.Text>
+          <Typography.Text type="secondary">
+            正文、变量和可复用条款在同一工作台中维护。
+            {currentVersionNo ? `当前版本 v${currentVersionNo}，` : ''}保存正文修改将生成独立版本，不影响已创建的实例。
+          </Typography.Text>
         </div>
         <Space wrap>
           <Button icon={<IconBook />} onClick={() => setClauseDrawerVisible(true)}>

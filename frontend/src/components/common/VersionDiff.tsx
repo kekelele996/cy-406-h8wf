@@ -35,8 +35,14 @@ export function VersionDiff({ left, right }: VersionDiffProps) {
         <Typography.Text type="secondary">左侧红色表示被删除内容，右侧绿色表示新增内容。</Typography.Text>
       </div>
       <div className="diff-grid">
-        <DiffColumn title={`版本 ${left.versionNo} · ${left.remark}`} tokens={diff.left} />
-        <DiffColumn title={`版本 ${right.versionNo} · ${right.remark}`} tokens={diff.right} />
+        <DiffColumn
+          title={`版本 ${left.versionNo} · ${left.remark}${left.templateVersionNo ? ` · 模板 v${left.templateVersionNo}` : ''}`}
+          tokens={diff.left}
+        />
+        <DiffColumn
+          title={`版本 ${right.versionNo} · ${right.remark}${right.templateVersionNo ? ` · 模板 v${right.templateVersionNo}` : ''}`}
+          tokens={diff.right}
+        />
       </div>
     </div>
   );

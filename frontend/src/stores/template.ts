@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import { templateDb } from '../api/db';
+import { instanceDb, templateDb, templateVersionDb } from '../api/db';
 import { Template, TemplateDraft } from '../types/template';
+import { TemplateVersion } from '../types/template-version';
 import { TemplateCategory } from '../types/enums';
 import { makeId, nowIso, putRecord } from '../utils/db';
-import { seedTemplates } from '../utils/seed';
+import { seedTemplates, seedTemplateVersions } from '../utils/seed';
+import { useTemplateVersionStore } from './templateVersion';
 
 interface TemplateHistory {
   past: Template[];
@@ -16,7 +18,7 @@ interface TemplateState {
   history: TemplateHistory;
   loadTemplates: () => Promise<void>;
   createTemplate: (draft?: Partial<TemplateDraft>) => Promise<Template>;
-  updateTemplate: (template: Template, trackHistory?: boolean) => Promise<void>;
+  updateTemplate: (template: Template, trackHistory?: boolean) => Promise<{ template: Template; version?: TemplateVersion }>;
   deleteTemplate: (id: string) => Promise<void>;
   duplicateTemplate: (id: string) => Promise<Template | undefined>;
   undoTemplateChange: () => Promise<void>;
@@ -50,10 +52,29 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
     try {
       let templates = await templateDb.list();
       if (!templates.length) {
-        await Promise.all(seedTemplates.map((template) => putRecord('templates', template)));
+        await Promise.all([
+          ...seedTemplates.map((template) => putRecord('templates', template)),
+          ...seedTemplateVersions.map((version) => putRecord('templateVersions', version))
+        ]);
         templates = seedTemplates;
       }
+
+      // 兼容旧数据：没有版本指针的模板补建首个版本，保证实例可以锁定
+      const versionStore = useTemplateVersionStore.getState();
+      templates = await Promise.all(
+        templates.map(async (template) => {
+          if (template.currentVersionId) {
+            return template;
+          }
+          const version = await versionStore.createVersion(template, '初始版本');
+          const next = { ...template, currentVersionId: version.id };
+          await templateDb.save(next);
+          return next;
+        })
+      );
+
       set({ templates: sortTemplates(templates) });
+      await useTemplateVersionStore.getState().loadVersions();
     } finally {
       set({ loading: false });
     }
@@ -61,13 +82,17 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
 
   async createTemplate(draft) {
     const timestamp = nowIso();
-    const template: Template = {
+    const base: Template = {
       ...defaultDraft,
       ...draft,
       id: makeId('tpl'),
+      currentVersionId: '',
       createdAt: timestamp,
       updatedAt: timestamp
     };
+
+    const version = await useTemplateVersionStore.getState().createVersion(base, '初始版本');
+    const template = { ...base, currentVersionId: version.id };
 
     await templateDb.save(template);
     set((state) => ({ templates: upsertTemplate(state.templates, template) }));
@@ -76,7 +101,22 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
 
   async updateTemplate(template, trackHistory = true) {
     const current = get().templates.find((item) => item.id === template.id);
-    const next = { ...template, updatedAt: nowIso() };
+    const currentVersion = template.currentVersionId ? await templateVersionDb.get(template.currentVersionId) : undefined;
+
+    // 只有正文或变量发生变化才生成新的模板版本，纯元数据保存不刷版本号
+    const contentChanged =
+      !currentVersion ||
+      currentVersion.contentHtml !== template.contentHtml ||
+      JSON.stringify(currentVersion.variables) !== JSON.stringify(template.variables);
+
+    let version: TemplateVersion | undefined;
+    let currentVersionId = template.currentVersionId;
+    if (contentChanged) {
+      version = await useTemplateVersionStore.getState().createVersion(template);
+      currentVersionId = version.id;
+    }
+
+    const next = { ...template, currentVersionId, updatedAt: nowIso() };
 
     await templateDb.save(next);
     set((state) => ({
@@ -89,10 +129,16 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
             }
           : state.history
     }));
+    return { template: next, version };
   },
 
   async deleteTemplate(id) {
     await templateDb.remove(id);
+    // 仍有实例引用时保留模板版本，保证历史合同可以回看原内容
+    const instances = await instanceDb.list();
+    if (!instances.some((instance) => instance.templateId === id)) {
+      await useTemplateVersionStore.getState().removeVersionsForTemplate(id);
+    }
     set((state) => ({ templates: state.templates.filter((template) => template.id !== id) }));
   },
 

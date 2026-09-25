@@ -9,7 +9,7 @@ interface VersionState {
   versions: Version[];
   loading: boolean;
   loadVersions: () => Promise<void>;
-  saveVersion: (instance: ContractInstance, remark: string) => Promise<Version>;
+  saveVersion: (instance: ContractInstance, remark: string, templateVersionNo?: number) => Promise<Version>;
   deleteVersion: (id: string) => Promise<void>;
 }
 
@@ -35,8 +35,10 @@ export const useVersionStore = create<VersionState>((set, get) => ({
     }
   },
 
-  async saveVersion(instance, remark) {
-    const related = get().versions.filter((version) => version.contractInstanceId === instance.id);
+  async saveVersion(instance, remark, templateVersionNo) {
+    // 版本号以数据库为准，避免 store 尚未加载时编号冲突
+    const stored = await versionDb.list();
+    const related = stored.filter((version) => version.contractInstanceId === instance.id);
     const nextNo = related.reduce((max, version) => Math.max(max, version.versionNo), 0) + 1;
     const version: Version = {
       id: makeId('ver'),
@@ -44,6 +46,8 @@ export const useVersionStore = create<VersionState>((set, get) => ({
       versionNo: nextNo,
       contentSnapshot: instance.finalHtml,
       variableSnapshot: instance.variableValues,
+      templateVersionId: instance.templateVersionId || undefined,
+      templateVersionNo,
       createdAt: nowIso(),
       remark: remark || `版本 ${nextNo}`
     };
